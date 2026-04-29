@@ -1,4 +1,5 @@
 pipeline {
+
     agent any
 
     environment {
@@ -8,13 +9,14 @@ pipeline {
 
     stages {
 
-        stage('Checkout') {
+        stage('Checkout Code') {
             steps {
-                git 'https://github.com/kwamasco23/Pyton-Monitoring-App.git'
+                git branch: 'master',
+                url: 'https://github.com/kwamasco23/Pyton-Monitoring-App.git'
             }
         }
 
-        stage('Build Image') {
+        stage('Build Docker Image') {
             steps {
                 sh "docker build -t $IMAGE:$TAG ."
             }
@@ -27,18 +29,35 @@ pipeline {
                     usernameVariable: 'USER',
                     passwordVariable: 'PASS'
                 )]) {
-                    sh "docker login -u $USER -p $PASS"
-                    sh "docker push $IMAGE:$TAG"
+
+                    sh '''
+                    echo $PASS | docker login -u $USER --password-stdin
+                    docker push $IMAGE:$TAG
+                    '''
                 }
             }
         }
 
         stage('Deploy to Kubernetes') {
             steps {
-                sh """
-                kubectl set image deployment/monitoring-app monitoring-app=$IMAGE:$TAG
-                """
+                sh '''
+                export KUBECONFIG=/var/lib/jenkins/kubeconfig
+
+                /usr/local/bin/kubectl set image deployment/monitoring-app \
+                monitoring-app=$IMAGE:$TAG
+
+                /usr/local/bin/kubectl rollout status deployment/monitoring-app
+                '''
             }
+        }
+    }
+
+    post {
+        success {
+            echo "✅ Deployment successful: $IMAGE:$TAG"
+        }
+        failure {
+            echo "❌ Pipeline failed"
         }
     }
 }
